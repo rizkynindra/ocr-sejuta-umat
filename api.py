@@ -32,7 +32,9 @@ app = FastAPI(lifespan=lifespan)
 
 class OCRRequest(BaseModel):
     base64_data: str
-    file_type: str = None  # Optional, will be detected if not provided
+    file_type: str = None  # Optional
+    task: str = "structured"  # text, formula, table, structured, custom
+    custom_prompt: str = None
 
 # KTP
 DEFAULT_PROMPT_JSON = {
@@ -44,7 +46,6 @@ DEFAULT_PROMPT_JSON = {
     "RT_RW": "string",
     "KEL_DESA": "string",
     "KECAMATAN": "string",
-    "KOTA_KABUPATEN": "string",
     "agama": "string",
     "status_perkawinan": "string",
     "pekerjaan": "string",
@@ -101,12 +102,12 @@ async def extract_info(request_data: OCRRequest, request: Request):
             is_pdf = file_bytes.startswith(b"%PDF")
         
         if is_pdf:
-            result = await process_pdf(file_bytes)
+            result = await process_pdf(file_bytes, task=request_data.task, custom_prompt=request_data.custom_prompt)
         else:
             # Load image once from bytes
             try:
                 image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-                result = await process_image(image)
+                result = await process_image(image, task=request_data.task, custom_prompt=request_data.custom_prompt)
             except Exception as e:
                 result = {"status": "error", "error": str(e)}
                 raise HTTPException(status_code=400, detail=f"Failed to open image or detect type: {str(e)}")
@@ -130,7 +131,7 @@ async def extract_info(request_data: OCRRequest, request: Request):
         )
         raise
 
-async def process_image(image: Image.Image):
+async def process_image(image: Image.Image, task: str = "structured", custom_prompt: str = None):
     start_time = time.time()
     # Convert PIL Image back to base64 for the OpenAI API
     # Added quality=80 to reduce payload size
@@ -142,6 +143,33 @@ async def process_image(image: Image.Image):
     prep_time = time.time() - start_time
     print(f"DEBUG: Image preparation took {prep_time:.2f}s")
 
+    # Define prompt based on task
+    if task == "text":
+        prompt_text = "Text Recognition"
+    elif task == "formula":
+        prompt_text = "formula recognition"
+    elif task == "table":
+        prompt_text = "table recognition"
+    elif task == "custom":
+        if custom_prompt:
+            # If user didn't provide braces, treat it as a list of fields
+            custom_prompt_stripped = custom_prompt.strip()
+            if not custom_prompt_stripped.startswith('{'):
+                # Split by comma or newline
+                import re
+                fields = [f.strip() for f in re.split(r'[,\n]+', custom_prompt_stripped) if f.strip()]
+                # Create a simple JSON template
+                template = {field: "string" for field in fields}
+                processed_prompt = json.dumps(template, indent=4)
+            else:
+                processed_prompt = custom_prompt_stripped
+                
+            prompt_text = f"Extract information from this document. Use the following template as a guide for the structure and types: {processed_prompt}"
+        else:
+            prompt_text = f"Extract information from this document. Use the following template as a guide for the structure and types: {json.dumps(DEFAULT_PROMPT_JSON, indent=4)}"
+    else:  # Default to structured
+        prompt_text = f"Extract information from this document. Use the following template as a guide for the structure and types: {json.dumps(DEFAULT_PROMPT_JSON, indent=4)}"
+
     messages = [
         {
             "role": "user",
@@ -152,7 +180,7 @@ async def process_image(image: Image.Image):
                 },
                 {
                     "type": "text",
-                    "text": f"Extract information from this document into the following JSON format. Ensure 'NIK' is numeric only and 'nama' contains only alphabetic characters (A-Z). Use the following template as a guide for the structure and types: {json.dumps(DEFAULT_PROMPT_JSON, indent=4)}"
+                    "text": prompt_text
                 }
             ],
         }
@@ -189,7 +217,7 @@ async def process_image(image: Image.Image):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_pdf(pdf_bytes: bytes):
+async def process_pdf(pdf_bytes: bytes, task: str = "structured", custom_prompt: str = None):
     results = []
     try:
         doc = fitz.open("pdf", stream=pdf_bytes)
@@ -203,7 +231,7 @@ async def process_pdf(pdf_bytes: bytes):
             page_image = Image.open(io.BytesIO(img_data)).convert("RGB")
             
             # Process this page as an image
-            page_result = await process_image(page_image)
+            page_result = await process_image(page_image, task=task, custom_prompt=custom_prompt)
             results.append({
                 "page": page_num + 1,
                 "data": page_result.get("data") if page_result.get("status") == "success" else page_result

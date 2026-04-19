@@ -17,7 +17,6 @@
     <div class="container">
         <header>
             <h1>OCR Sejuta Umat</h1>
-            <p class="subtitle">Model: GLM-OCR</p>
         </header>
 
         <div class="main-grid">
@@ -26,6 +25,38 @@
                 <div class="results-header">
                     <h3 style="font-weight: 700;">Upload Document</h3>
                     <span id="upload-status" class="status-badge status-ready">Ready</span>
+                </div>
+
+                <div class="task-selector">
+                    <p style="font-size: 0.8rem; font-weight: 600; margin-bottom: 8px; color: var(--text-muted);">SELECT
+                        OCR TASK</p>
+                    <div class="radio-group">
+                        <label class="radio-item">
+                            <input type="radio" name="task" value="structured" checked>
+                            <span>KTP</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="task" value="text">
+                            <span>Text</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="task" value="formula">
+                            <span>Formula</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="task" value="table">
+                            <span>Table</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="task" value="custom">
+                            <span>Custom</span>
+                        </label>
+                    </div>
+                    <div id="custom-prompt-container" style="display: none; margin-top: 12px;">
+                        <textarea id="custom-prompt"
+                            placeholder="Enter fields separated by commas, e.g.: name, address, date of birth"
+                            rows="3"></textarea>
+                    </div>
                 </div>
 
                 <form id="upload-form">
@@ -111,6 +142,20 @@
             handleFiles(this.files);
         });
 
+        // Task selector logic
+        const radioButtons = document.querySelectorAll('input[name="task"]');
+        const customPromptContainer = document.getElementById('custom-prompt-container');
+
+        radioButtons.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'custom') {
+                    customPromptContainer.style.display = 'block';
+                } else {
+                    customPromptContainer.style.display = 'none';
+                }
+            });
+        });
+
         function handleFiles(files) {
             if (files.length > 0) {
                 const file = files[0];
@@ -147,8 +192,13 @@
             const file = fileInput.files[0] || (dropZone.files && dropZone.files[0]);
             if (!file) return;
 
+            const task = document.querySelector('input[name="task"]:checked').value;
+            const customPrompt = document.getElementById('custom-prompt').value;
+
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('task', task);
+            formData.append('custom_prompt', customPrompt);
 
             // UI State: Loading
             extractBtn.disabled = true;

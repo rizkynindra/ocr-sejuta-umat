@@ -35,3 +35,12 @@ CUDA_VISIBLE_DEVICES=0 VLLM_USE_V1=0 vllm serve zai-org/GLM-OCR \
     --speculative-config.method mtp \
     --speculative-config.num_speculative_tokens 1 \
     --enable-prefix-caching
+
+# Run on RTX 3060
+CUDA_VISIBLE_DEVICES=0 uv run vllm serve zai-org/GLM-OCR \
+    --port 8001 \
+    --trust-remote-code \
+    --gpu-memory-utilization 0.9 \
+    --max-model-len 4096 \
+    --dtype float16 \
+    --max-num-seqs 1
