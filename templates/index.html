@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Sejuta Umat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Fira+Code&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>OCR Sejuta Umat</h1>
+            <p class="subtitle">Model: GLM-OCR</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- Left Side: Upload -->
+            <div class="card">
+                <div class="results-header">
+                    <h3 style="font-weight: 700;">Upload Document</h3>
+                    <span id="upload-status" class="status-badge status-ready">Ready</span>
+                </div>
+
+                <form id="upload-form">
+                    <input type="file" id="file-input" hidden accept="image/*,application/pdf">
+                    <div class="upload-zone" id="drop-zone">
+                        <i class="fas fa-file-pdf upload-icon" id="pdf-icon" style="display: none;"></i>
+                        <i class="fas fa-cloud-upload-alt upload-icon" id="upload-icon"></i>
+                        <div id="drop-text">
+                            <strong>Click to upload</strong> or drag and drop<br>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">PNG, JPG, PDF (max 16MB)</span>
+                        </div>
+                    </div>
+
+                    <div class="preview-container" id="preview-container">
+                        <img id="image-preview" src="#" alt="Preview">
+                    </div>
+
+                    <button type="submit" class="btn" id="extract-btn" disabled>
+                        <span class="loader" id="loader"></span>
+                        <i class="fas fa-magic" id="magic-icon"></i>
+                        <span id="btn-text">Extract Information</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Right Side: Results -->
+            <div class="card">
+                <div class="results-header">
+                    <h3 style="font-weight: 700;">Extraction Result</h3>
+                    <button id="copy-btn"
+                        style="background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem;">
+                        <i class="far fa-copy"></i> Copy JSON
+                    </button>
+                </div>
+                <div id="json-output">// Results will appear here after extraction...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadForm = document.getElementById('upload-form');
+        const imagePreview = document.getElementById('image-preview');
+        const previewContainer = document.getElementById('preview-container');
+        const dropText = document.getElementById('drop-text');
+        const extractBtn = document.getElementById('extract-btn');
+        const jsonOutput = document.getElementById('json-output');
+        const uploadStatus = document.getElementById('upload-status');
+        const loader = document.getElementById('loader');
+        const magicIcon = document.getElementById('magic-icon');
+        const btnText = document.getElementById('btn-text');
+        const copyBtn = document.getElementById('copy-btn');
+
+        // Drag & Drop event listeners
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        fileInput.addEventListener('change', function () {
+            handleFiles(this.files);
+        });
+
+        function handleFiles(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        imagePreview.src = e.target.result;
+                        previewContainer.style.display = 'block';
+                        dropZone.style.display = 'none';
+                        extractBtn.disabled = false;
+                        uploadStatus.className = 'status-badge status-success';
+                        uploadStatus.textContent = 'File Ready';
+                    }
+                    reader.readAsDataURL(file);
+                } else if (file.type === 'application/pdf') {
+                    // For PDF, show a PDF icon instead of image preview
+                    previewContainer.style.display = 'none';
+                    dropZone.style.display = 'flex';
+                    document.getElementById('upload-icon').style.display = 'none';
+                    document.getElementById('pdf-icon').style.display = 'block';
+                    dropText.innerHTML = `<strong>${file.name}</strong><br><span style="color: var(--success);">PDF Ready for extraction</span>`;
+                    extractBtn.disabled = false;
+                    uploadStatus.className = 'status-badge status-success';
+                    uploadStatus.textContent = 'PDF Loaded';
+                } else {
+                    alert('Please upload an image or PDF file.');
+                }
+            }
+        }
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const file = fileInput.files[0] || (dropZone.files && dropZone.files[0]);
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // UI State: Loading
+            extractBtn.disabled = true;
+            loader.style.display = 'inline-block';
+            magicIcon.style.display = 'none';
+            btnText.textContent = 'Extracting...';
+            uploadStatus.className = 'status-badge status-loading';
+            uploadStatus.textContent = 'Processing';
+            jsonOutput.textContent = '// Sending to API, please wait...';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    jsonOutput.textContent = JSON.stringify(result.data, null, 4);
+                    uploadStatus.className = 'status-badge status-success';
+                    uploadStatus.textContent = 'Success';
+                } else {
+                    jsonOutput.textContent = JSON.stringify(result, null, 4);
+                    uploadStatus.className = 'status-badge status-error';
+                    uploadStatus.textContent = 'Error';
+                }
+            } catch (error) {
+                jsonOutput.textContent = `Error: ${error.message}`;
+                uploadStatus.className = 'status-badge status-error';
+                uploadStatus.textContent = 'Failed';
+            } finally {
+                extractBtn.disabled = false;
+                loader.style.display = 'none';
+                magicIcon.style.display = 'inline-block';
+                btnText.textContent = 'Extract Information';
+            }
+        });
+
+        copyBtn.addEventListener('click', () => {
+            const text = jsonOutput.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalHtml = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => copyBtn.innerHTML = originalHtml, 2000);
+            });
+        });
+    </script>
+</body>
+
+</html>

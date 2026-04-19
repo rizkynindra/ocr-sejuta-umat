@@ -1,0 +1,15 @@
+[Unit]
+Description=GLM-OCR FastAPI
+After=network.target
+
+[Service]
+User=sysadmin
+Group=sysadmin
+WorkingDirectory=/home/sysadmin/GLM-OCR
+Environment="PATH=/home/sysadmin/GLM-OCR/.venv/bin"
+ExecStart=/home/sysadmin/GLM-OCR/.venv/bin/gunicorn api:app -k uvicorn.workers.UvicornWorker -w 1 -b 0.0.0.0:8787 --timeout 120
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
